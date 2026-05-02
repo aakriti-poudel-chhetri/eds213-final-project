@@ -18,25 +18,22 @@ Using a relational database and SQL, it links city-level waste composition data 
 
 ```
 eds213-final-project/
-│
-├── README.md                       # project overview and documentation
-├── waste_data_cleaning.qmd         # data cleaning script (R/Quarto)
-├── waste_data_analysis.sql         # analytical SQL queries
-├── eds213-final-project.Rproj      # RStudio project file
-├── RQ                              # research question notes
-├── .gitignore
-│
-├── image/                          # figures and visuals
-│
-└── data/                           # not tracked by git (see Data Access below)
-    ├── raw/                        # original Excel files downloaded from World Bank
-    │   ├── what_a_waste_3_0_city_dataset.xlsx
-    │   └── what_a_waste_3_0_country_dataset.xlsx
-    ├── processed/                  # cleaned CSV files produced by waste_data_cleaning.qmd
-    │   ├── city_cleaned.csv
-    │   └── country_cleaned.csv
-    └── database/                   # DuckDB database created in Lab 3
-        └── waste_database.duckdb
+├── README.md                        
+├── waste_data_cleaning.qmd          
+├── waste_data_analysis.sql         
+├── eds213-final-project.Rproj       
+├── requirements.txt                 
+├── image/                        
+└── .gitignore
+    └── data/
+        ├── raw/                         
+        │   ├── what_a_waste_3_0_city_dataset.xlsx
+        │   └── what_a_waste_3_0_country_dataset.xlsx
+        ├── processed/                   
+        │   ├── city_cleaned.csv
+        │   └── country_cleaned.csv
+        └── database/                    
+            └── waste_database.duckdb
 ```
 
 ### Data Access
