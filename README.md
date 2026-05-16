@@ -4,8 +4,6 @@
 
 This repository contains materials for the final project for the course [EDS 213: Databases and Data Management](https://ucsb-library-research-data-services.github.io/bren-eds213/). This course is part of the [UCSB Masters in Environmental Data Science](https://bren.ucsb.edu/masters-programs/master-environmental-data-science).
 
-![Heatmap of waste treatment rates by income group](image/plot3_heatmap_treatment.png)
-
 ## Purpose
 
 Solid waste is growing faster than cities can manage it, and it is a problem no country has fully solved. What a community throws away and what happens to it varies widely depending on where people live and how wealthy their country is. Understanding these differences requires looking at the data closely.
@@ -16,6 +14,8 @@ This project uses the **What a Waste 3.0** database from the World Bank Group to
 > waste composition predict its recycling or open dumping rates?*
 
 Using a relational database and SQL, it links city-level waste composition data with country-level treatment outcomes, revealing patterns that neither dataset could show alone.
+
+![Heatmap of waste treatment rates by income group](image/plot3_heatmap_treatment.png)
 
 ## Repository Structure
 
@@ -36,9 +36,13 @@ eds213-final-project/
 |   ├── plot3_heatmap_treatment.png
 |   └── plot4_scatter_prediction.png
 └── .gitignore
-    └── data/                           
-        ├── what_a_waste_3_0_city_dataset.xlsx
-        └── what_a_waste_3_0_country_dataset.xlsx
+    └── data/
+        ├── raw/
+        |   ├── what_a_waste_3_0_city_dataset.xlsx
+        |   └── what_a_waste_3_0_country_dataset.xlsx
+        └── processed/
+            ├── city_cleaned.csv
+            └── country_cleaned.csv
 
 ```
 
