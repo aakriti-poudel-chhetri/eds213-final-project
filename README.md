@@ -45,6 +45,14 @@ eds213-final-project/
             └── country_cleaned.csv
 
 ```
+**Files description:**
+
+- **`environment.R`** — run this first to install and load all required R packages.
+- **`requirements.txt`** — saved R session and package version information for reproducibility.
+- **`waste_data_cleaning.qmd`** — imports raw Excel files, cleans and standardizes columns, and writes cleaned CSVs to `data/processed/`.
+- **`waste_data_analysis.qmd`** — connects to the DuckDB database, runs queries, and produces all four visualizations saved to `image/`.
+- **`waste_data_analysis.sql`** — SQL script for database ingestion and all four analytical queries.
+- **`database/waste_database.duckdb`** — the DuckDB database containing the two cleaned tables: `city_data` and `country_data`.
 
 ## Data Access
 
@@ -60,16 +68,20 @@ Both datasets are available for free download from the World Bank Data Catalog:
 
 > World Bank Group. (2024). *What a Waste Global Database*. Retrieved from <https://datacatalog.worldbank.org/search/dataset/0039597/what-a-waste-global-database>
 
-## How to Reproduce This Project
+## Database Schema
 
-1. Install the R packages listed in `requirements.txt`.
-2. Download both Excel files from the World Bank link above.
-3. Create a `data/raw/` folder inside the project root and place both Excel files there.
-4. Run `waste_data_cleaning.qmd` to produce the cleaned CSV files in `data/processed/`.
-5. Create a `data/database/` folder inside the project root.
-6. Open DuckDB and run the ingestion steps at the top of `waste_data_analysis.sql` to create `data/database/waste_database.duckdb`.
+![Database schema](image/final-proj-schema.png)
+
+## Reproducibility
+
+1. Clone this repository.
+2. Run `environment.R` to install and load all required R packages.
+3. Download both Excel files from the [World Bank Data Catalog](https://datacatalog.worldbank.org/search/dataset/0039597/what-a-waste-global-database).
+4. Create a `data/raw/` folder inside the project root and place both Excel files there.
+5. Run `waste_data_cleaning.qmd` to produce the cleaned CSV files in `data/processed/`.
+6. Open DuckDB and run the ingestion steps at the top of `waste_data_analysis.sql` to create `database/waste_database.duckdb`.
 7. Run the remaining SQL queries in `waste_data_analysis.sql` to explore the data.
-8. Run `waste_data_analysis.qmd` to reproduce all visualizations. Output figures are saved to `image/`.
+8. Run `waste_data_analysis.qmd` to reproduce all visualizations.
 
 ## References and Acknowledgements
 
