@@ -26,12 +26,13 @@ eds213-final-project/
 ├── requirements.txt                  
 ├── eds213-final-project.Rproj
 ├── database/                      
-    └── waste_database.duckdb
+|   └── waste_database.duckdb
 ├── image/
-    ├── plot1_composition_income.png
-    ├── plot2_composition_region.png
-    ├── plot3_heatmap_treatment.png
-    └── plot4_scatter_prediction.png
+|   ├── final-proj-schema.png
+|   ├── plot1_composition_income.png
+|   ├── plot2_composition_region.png
+|   ├── plot3_heatmap_treatment.png
+|   └── plot4_scatter_prediction.png
 └── .gitignore
     └── data/                           
         ├── what_a_waste_3_0_city_dataset.xlsx
