@@ -17,17 +17,15 @@ format:
 knitr::opts_knit$set(root.dir = here::here())
 ```
 
-
 ## Project background
 
 This project uses the **What a Waste 3.0** database, published by the [World Bank Group](https://datacatalog.worldbank.org/search/dataset/0039597/what-a-waste-global-database). It is one of the most comprehensive global datasets on solid waste management, covering cities and countries across all income levels and world regions.
 
 **Research Question:**
 
-> *How does waste composition differ across income groups and regions? And does a country's
-> waste composition predict its recycling or open dumping rates?*
+> *How does waste composition differ across income groups and regions? And does a country's waste composition predict its recycling or open dumping rates?*
 
----
+------------------------------------------------------------------------
 
 ## About the datasets
 
@@ -42,7 +40,7 @@ I am working with two separate datasets from the What a Waste 3.0 database.
 - **Regions:** Europe & Central Asia (89 cities), Sub-Saharan Africa (46), Latin America & the Caribbean (43), East Asia & Pacific (38), Middle East & North Africa (26), South Asia (14), North America (6)
 - **Known data gaps:** Waste composition is missing for 62 of 262 cities. Recycling rates are missing for 148 cities, open dumping rates for 216 cities.
 
-This reflects real-world reporting gaps — not errors in the data.
+This reflects real world reporting gaps, not errors in the data.
 
 ### Country dataset
 
@@ -50,17 +48,19 @@ This reflects real-world reporting gaps — not errors in the data.
 - **Coverage:** 217 countries (one row per country)
 - **What it contains:** The same waste composition and treatment variables as the city dataset, but aggregated to the national level.
 - **Income groups:** High Income (80 countries), Upper-Middle Income (57), Lower-Middle Income (50), Low Income (14). 16 countries have no income group assigned.
-- **Known data gaps:** Composition data missing for ~38 countries. Recycling rates missing for 87 countries, open dumping rates for 165 countries.
+- **Known data gaps:** Composition data missing for \~38 countries. Recycling rates missing for 87 countries, open dumping rates for 165 countries.
 
 ### How the two datasets relate
 
-Both datasets share the column `iso3c` — a standard three-letter country code (e.g., `"USA"`, `"KEN"`, `"BRA"`). This is the **join key** that links cities to their country. The relationship is **many-to-one**: one country row matches many city rows (for example, India has 5 cities in the city dataset).
+Both datasets share the column `iso3c`, a standard three letter country code (e.g., `"USA"`, `"KEN"`, `"BRA"`). This is the join key that links cities to their country. The relationship is **many-to-one**, one country row matches many city rows (for example, India has 5 cities in the city dataset).
 
-The goal of this cleaning script is to produce two CSV files, one per dataset, where the `iso3c` join key is clean, consistent, and ready for SQL ingestion in Lab 3.
+The goal of this cleaning script is to produce two CSV files, one per dataset, where the `iso3c` join key is clean, consistent, and ready for SQL ingestion.
 
----
+------------------------------------------------------------------------
 
-## Step 1: Load the libraries
+## Data cleaning
+
+### Step 1: Load the libraries
 
 ```{r}
 #| message: false
@@ -73,11 +73,11 @@ library(janitor)
 
 ```
 
----
+------------------------------------------------------------------------
 
-## Step 2: Load the raw data
+### Step 2: Load the raw data
 
-Both files are Excel workbooks with multiple sheets. The data I need is in the sheets called `"City dataset"` and `"Country dataset"`.
+Both files are excel workbooks with multiple sheets. The data I need is in the sheets called `"City dataset"` and `"Country dataset"`.
 
 ```{r}
 # read the city-level sheet
@@ -100,59 +100,60 @@ country_raw <- suppressMessages(
 cat("City dataset:", nrow(city_raw), "rows,", ncol(city_raw), "columns\n")
 cat("Country dataset:", nrow(country_raw), "rows,", ncol(country_raw), "columns\n")
 ```
----
 
-## Step 3: Select only the columns we need
+------------------------------------------------------------------------
+
+### Step 3: Select only the columns we need
 
 Both files have hundreds of columns. I keep only the columns relevant to my research question and rename them to short, clean names so they are easier to work with in future steps.
 
 ```{r}
-# ── City dataset ──────────────────────────────────────────────────────────────
-
+# City dataset for SQL ingestion and analysis 
 city_selected <- city_raw %>%
   select(
-    # --- identifiers ---
-    iso3c,        # 3-letter country code — JOIN KEY to country dataset
+    iso3c, # 3-letter country code, JOIN KEY to country dataset
     country_name,
     city_name,
-    city_code,    # unique city identifier — PRIMARY KEY for this table
-    income_id,    # income group: LIC, LMIC, UMIC, HIC
-    region_id,    # world region
+    city_code, # unique city identifier, PRIMARY KEY for this table
+    income_id, # income group: LIC, LMIC, UMIC, HIC
+    region_id, # world region
 
-    # --- waste composition (% of total waste by weight) ---
+    # waste composition (% of total waste by weight)
     food_pct    = composition_msw_food_organic_waste_percent,
     plastic_pct = composition_msw_plastic_percent,
     paper_pct   = composition_msw_paper_cardboard_percent,
     glass_pct   = composition_msw_glass_percent,
     metal_pct   = composition_msw_metal_percent,
+    textile_pct = composition_msw_textile_waste_percent,
     other_pct   = composition_msw_other_percent,
 
-    # --- waste treatment outcomes (% of total waste by weight) ---
-    recycling_pct = waste_treatment_recycling_percent,
-    open_dump_pct = waste_treatment_open_dumpsite_percent
+    # waste treatment outcomes (% of total waste by weight)
+    recycling_pct        = waste_treatment_recycling_percent,
+    open_dump_pct        = waste_treatment_open_dumpsite_percent,
+    sanitary_landfill_pct = waste_treatment_sanitary_landfill_landfill_gas_system_percent
   )
 
-# ── Country dataset ───────────────────────────────────────────────────────────
-
+# Country dataset for SQL ingestion and analysis 
 country_selected <- country_raw %>%
   select(
-    # --- identifiers ---
-    iso3c        = country_code,        # PRIMARY KEY for this table
+    iso3c        = country_code, # PRIMARY KEY for this table
     country_name = country_name,
     income_id    = income_group_waste_generation_year,
     region_id    = region,
 
-    # --- waste composition (% of total waste by weight) ---
+    # waste composition (% of total waste by weight)
     food_pct    = composition_food_percent_weight_msw,
     plastic_pct = composition_plastic_percent_weight_msw,
     paper_pct   = composition_paper_cardboard_percent_weight_msw,
     glass_pct   = composition_glass_percent_weight_msw,
     metal_pct   = composition_metal_percent_weight_msw,
+    textile_pct = composition_textiles_percent_weight_msw,
     other_pct   = composition_other_percent_weight_msw,
 
-    # --- waste treatment outcomes (% of total waste by weight) ---
-    open_dump_pct = treatment_open_dump_percent_weight_msw_generated,
-    recycling_pct = treatment_recycling_percent_weight_msw_generated
+    # waste treatment outcomes (% of total waste by weight)
+    open_dump_pct         = treatment_open_dump_percent_weight_msw_generated,
+    recycling_pct         = treatment_recycling_percent_weight_msw_generated,
+    sanitary_landfill_pct = treatment_sanitary_landfill_percent_weight_msw_generated
   )
 
 # confirm the column selection looks right
@@ -160,31 +161,28 @@ glimpse(city_selected)
 glimpse(country_selected)
 ```
 
----
+------------------------------------------------------------------------
 
-## Step 4: Remove the spurious header row (Country dataset)
+### Step 4: Remove the spurious header row (Country dataset)
 
-When R reads the country Excel file, the very first data row contains column
-name strings (like `"iso3c"`, `"income_id"`) instead of real values. This is
-because the Excel file had a second header row embedded inside the data area.
-That row is not real data and must be removed.
+When R reads the country excel file, the very first data row contains column name strings (like `"iso3c"`, `"income_id"`) instead of real values. This is because the excel file had a second header row embedded inside the data area. That row is not real data and must be removed.
 
 ```{r}
 # remove the row where iso3c literally contains the string "iso3c"
 country_selected <- country_selected %>%
   filter(iso3c != "iso3c")
 
-# verify it is gone, should print 0
+# verify, should print 0
 cat("Leftover header rows (should be 0):",
     sum(country_selected$iso3c == "iso3c", na.rm = TRUE), "\n")
 cat("Country rows after removal:", nrow(country_selected), "\n")
 ```
 
----
+------------------------------------------------------------------------
 
-## Step 5: Fix the inconsistent income group label (Country dataset)
+### Step 5: Fix the inconsistent income group label (Country dataset)
 
-The `income_id` column in the country dataset contains one old label: `"UMC (2019)"`. This was used in a previous version of the dataset for upper-middle-income countries. I recode it to `"UMIC"` so it is consistent with the city dataset and with all other rows in the country dataset.
+The `income_id` column in the country dataset contains one old label `"UMC (2019)"`. This was used in a previous version of the dataset for upper-middle-income countries. I recoded it to `"UMIC"` so it is consistent with the city dataset and with all other rows in the country dataset.
 
 ```{r}
 # replace the old label with the current standard code
@@ -196,18 +194,18 @@ country_selected %>%
   count(income_id, sort = TRUE)
 ```
 
----
+------------------------------------------------------------------------
 
-## Step 6: Convert percentage oclumns to numeric
+### Step 6: Convert percentage columns to numeric
 
-R read the composition and treatment columns as text (`character`) because the raw Excel file mixes numbers with occasional labels. I convert them all to numeric. Any value that cannot be converted will become `NA` automatically.
+R read the composition and treatment columns as text (`character`) because the raw excel file mixes numbers with occasional labels. I convert them all to numeric. Any value that cannot be converted will become `NA` automatically.
 
 ```{r}
 # name all the percentage columns that need converting
 numeric_cols <- c(
   "food_pct", "plastic_pct", "paper_pct",
-  "glass_pct", "metal_pct",  "other_pct",
-  "recycling_pct", "open_dump_pct"
+  "glass_pct", "metal_pct", "textile_pct", "other_pct",
+  "recycling_pct", "open_dump_pct", "sanitary_landfill_pct"
 )
 
 # convert in both datasets using across()
@@ -225,11 +223,11 @@ cat("\nCountry — column types after conversion:\n")
 country_selected %>% select(all_of(numeric_cols)) %>% sapply(class)
 ```
 
----
+------------------------------------------------------------------------
 
-## Step 7: Check for missing values
+### Step 7: Check for missing values
 
-Missing values (`NA`) are common in this dataset because not every city or country has reported every variable. I count and display them here so I know what to expect in later analyses. I do **not** remove rows with missing values, the identifier columns on those rows are still valid and needed for joins.
+Missing values (`NA`) are common in this dataset because not every city or country has reported every variable. I count and display them here so I know what to expect in later analyses. I do not remove rows with missing values, the identifier columns on those rows are still valid and needed for joins.
 
 ```{r}
 # missing values per column, city dataset
@@ -249,9 +247,9 @@ country_selected %>%
   print(n = Inf)
 ```
 
----
+------------------------------------------------------------------------
 
-## Step 8: Check primary keys for duplicates
+### Step 8: Check primary keys for duplicates
 
 For a SQL join to work correctly, the primary key of each table must be unique. A duplicated primary key would cause rows to multiply during a join.
 
@@ -276,9 +274,9 @@ cat("Duplicate iso3c in country table (should be 0):", nrow(country_pk_dupes), "
 if (nrow(country_pk_dupes) > 0) print(country_pk_dupes)
 ```
 
----
+------------------------------------------------------------------------
 
-## Step 9: Verify the join key overlaps across both tables
+### Step 9: Verify the join key overlaps across both tables
 
 I check that every `iso3c` value in the city table has a matching row in the country table. If any city has no matching country, it would be dropped silently in an `INNER JOIN`.
 
@@ -304,9 +302,9 @@ if (length(unmatched) > 0) {
 
 All 163 city-side `iso3c` values have a matching country row, so no cities will be lost in a join. The 54 countries in the country table that have no cities are fine, they simply will not appear in a join result, which is expected.
 
----
+------------------------------------------------------------------------
 
-## Step 10: Add readable income labels
+### Step 10: Add readable income labels
 
 The `income_id` codes are consistent but short. I add a full plain-language label column so plots and summary tables are easier to read.
 
@@ -336,11 +334,11 @@ cat("\nCountry — income group counts (16 NAs expected):\n")
 country_selected %>% count(income_id, income_label)
 ```
 
----
+------------------------------------------------------------------------
 
-## Step 11: Save the cleaned datasets
+### Step 11: Save the cleaned datasets
 
-Both datasets are clean and ready. I save them as CSV files so they can be loaded into a database in Lab 3.
+Both datasets are clean and ready. I save them as CSV files so they can be loaded into a database.
 
 ```{r}
 # preview each cleaned dataset before saving
@@ -356,19 +354,19 @@ head(country_selected, 5)
 write_csv(city_selected, "data/processed/city_cleaned.csv")
 write_csv(country_selected, "data/processed/country_cleaned.csv")
 
-cat("Saved: data/city_cleaned.csv —", nrow(city_selected), "rows,",
+cat("Saved: data/processed/city_cleaned.csv —", nrow(city_selected), "rows,",
     ncol(city_selected), "columns\n")
-cat("Saved: data/country_cleaned.csv —", nrow(country_selected), "rows,",
+cat("Saved: data/processed/country_cleaned.csv —", nrow(country_selected), "rows,",
     ncol(country_selected), "columns\n")
 ```
 
----
+------------------------------------------------------------------------
 
 ## Cleaning summary
 
 | Step | Problem found | What I did |
-|------|--------------|------------|
-| Select columns | 393 and 110 columns — most not needed | Kept 14–15 columns per table; renamed to short clean names |
+|-----------------|------------------------------|-------------------------|
+| Select columns | 393 and 110 columns — most not needed | Kept 15–16 columns per table; renamed to short clean names including `sanitary_landfill_pct` |
 | Remove header row | Row 1 in country dataset had column name strings as values | Filtered it out with `filter(iso3c != "iso3c")` |
 | Fix income label | `"UMC (2019)"` appeared only in the country dataset | Recoded to `"UMIC"` with `if_else()` |
 | Convert to numeric | Percentage columns came in as text from Excel | Used `as.numeric()` via `across()` |
@@ -378,3 +376,13 @@ cat("Saved: data/country_cleaned.csv —", nrow(country_selected), "rows,",
 | Income labels | Short codes are hard to read in outputs | Added `income_label` column with full names |
 
 The two cleaned CSV files, `city_cleaned.csv` and `country_cleaned.csv`, share the column `iso3c` as a join key and are ready for database ingestion.
+
+------------------------------------------------------------------------
+
+## Session info
+
+The output below records the R version and package versions used to produce this file. This makes the analysis reproducible on other machines.
+
+```{r}
+sessionInfo()
+```

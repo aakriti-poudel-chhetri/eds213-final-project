@@ -1,0 +1,517 @@
+---
+title: "EDS 213 Final Project"
+subtitle: "Data Analysis and Visualization"
+author: "Aakriti Poudel"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    theme: cosmo
+    code-fold: false
+    embed-resources: true
+---
+
+```{r}
+#| message: false
+#| warning: false
+
+# Force R to use the project root as the working directory
+# so all file paths work regardless of where this QMD is saved
+knitr::opts_knit$set(root.dir = here::here())
+```
+
+## Research Question
+
+> *How does waste composition differ across income groups and regions? And does a country's waste composition
+> predict its recycling or open dumping rates?*
+
+This file connects to the DuckDB database, runs the SQL queries, and creates one visualization per query to answer the research question.
+
+------------------------------------------------------------------------
+
+### Step 1: Load Libraries
+
+```{r}
+#| message: false
+#| warning: false
+
+library(tidyverse)  # for data manipulation and ggplot2 visualizations
+library(DBI)        # provides a standard interface to connect R to databases
+library(dbplyr)     # lets us use dplyr verbs on database tables
+library(duckdb)     # the database engine we are using
+library(here)       # for file paths relative to the project root
+library(scales)     # for formatting axis labels (e.g. percent format in heatmap)
+```
+
+------------------------------------------------------------------------
+
+### Step 2: Connect to the database
+
+```{r}
+# Open a connection to our DuckDB database
+# The database file contains two tables city_data and country_data
+conn <- DBI::dbConnect(
+  duckdb::duckdb(),
+  dbdir = here("data", "database", "waste_database.duckdb")
+)
+
+# Confirm both tables are available
+DBI::dbListTables(conn)
+```
+
+------------------------------------------------------------------------
+
+### Step 3: Reference the tables
+
+```{r}
+# Point to the two tables in the database
+# Data stays in the database until we call collect()
+city_db    <- tbl(conn, "city_data")
+country_db <- tbl(conn, "country_data")
+
+cat("Tables connected successfully\n")
+```
+
+------------------------------------------------------------------------
+
+## Analysis 1: Waste composition by income group
+
+*Answers: How does waste composition differ across income groups?*
+
+This corresponds to Query 1 in `waste_data_analysis.sql`. I group cities by income level and calculate the average percentage of food, plastic, paper, and textile in their waste. Textile was included because it has good data coverage (144 of 262 cities) and is an increasingly tracked waste stream globally.
+
+### Query
+
+```{r}
+# Group cities by income level and calculate average composition percentages
+# We filter rows with no income group or no food data to keep averages meaningful
+# JOIN to country_data confirms each city has a valid country match
+
+composition_by_income <- city_db %>%
+  inner_join(country_db, by = "iso3c") %>%
+  filter(!is.na(income_id.x), !is.na(food_pct.x)) %>%
+  group_by(income_id = income_id.x, income_label = income_label.x) %>%
+  summarise(
+    number_of_cities = n(),
+    avg_food_pct     = round(mean(food_pct.x, na.rm = TRUE), 3),
+    avg_plastic_pct  = round(mean(plastic_pct.x, na.rm = TRUE), 3),
+    avg_paper_pct    = round(mean(paper_pct.x, na.rm = TRUE), 3),
+    avg_textile_pct  = round(mean(textile_pct.x, na.rm = TRUE), 3),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(avg_food_pct)) %>%
+  collect()
+
+composition_by_income
+```
+
+### Visualization
+
+```{r}
+#| fig-width: 9
+#| fig-height: 5
+
+# Put all four waste types into one column so they can be plotted side by side
+composition_long <- composition_by_income %>%
+  pivot_longer(
+    cols      = c(avg_food_pct, avg_plastic_pct, avg_paper_pct, avg_textile_pct),
+    names_to  = "waste_type",
+    values_to = "avg_pct"
+  ) %>%
+  mutate(
+    waste_type   = recode(waste_type,
+                          "avg_food_pct"    = "Food & Organic",
+                          "avg_plastic_pct" = "Plastic",
+                          "avg_paper_pct"   = "Paper & Cardboard",
+                          "avg_textile_pct" = "Textile"),
+    # Order income groups from lowest to highest income
+    income_label = factor(income_label,
+                          levels = c("Low Income", "Lower-Middle Income",
+                                     "Upper-Middle Income", "High Income"))
+  )
+
+# Add an "Other" segment per income group so each bar sums to 100%
+other_rows <- composition_long %>%
+  group_by(income_label) %>%
+  summarise(avg_pct = 1 - sum(avg_pct), .groups = "drop") %>%
+  mutate(waste_type = "Other")
+
+composition_long <- bind_rows(composition_long, other_rows) %>%
+  mutate(waste_type = factor(waste_type,
+                             levels = c("Food & Organic", "Plastic",
+                                        "Paper & Cardboard", "Textile", "Other")))
+
+ggplot(composition_long,
+       aes(x = income_label, y = avg_pct, fill = waste_type)) +
+  geom_col(position = "stack") +
+  geom_text(
+    aes(label = paste0(round(avg_pct * 100, 1), "%")),
+    position = position_stack(vjust = 0.5),
+    size = 2.8, color = "gray20", fontface = "bold"
+  ) +
+  coord_flip() +
+  labs(
+    title    = "Average Waste Composition by Income Group",
+    subtitle = "Food waste dominates in lower-income countries. Paper and plastic waste rise with income.",
+    x        = NULL,
+    y        = "Average % of Total Waste",
+    fill     = "Waste Type",
+  ) +
+  scale_fill_manual(values = c(
+    "Food & Organic"    = "#D95C75",   # raspberry
+    "Plastic"           = "#DFA8B0",   # pink grapefruit
+    "Paper & Cardboard" = "#F4C060",   # lemon
+    "Textile"           = "#C0C060",   # lime
+    "Other"             = "#7B9EC4"    # light gray
+  )) +
+  theme_minimal() +
+  theme(
+    plot.title    = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(size = 10, color = "gray40"),
+    axis.text.y   = element_text(size = 11)
+  )
+
+# Save plot to image folder for use in presentation
+ggsave(here("image", "plot1_composition_income.png"),
+       width = 9, height = 4, dpi = 300)
+```
+
+**Key finding:** Low-income countries have the most food waste, over 50% on average. As income rises, food waste drops and paper and plastic shares go up, likely because wealthier countries consume more packaged goods.
+
+------------------------------------------------------------------------
+
+## Analysis 2: Waste composition by region
+
+*Answers: How does waste composition differ across regions?*
+
+This corresponds to Query in `waste_data_analysis.sql`. Same as Analysis 1 but grouped by world region instead of income group.
+
+### Query
+
+```{r}
+# Group cities by world region and calculate average composition percentages
+# This shows whether geography — not just income — shapes what people throw away
+
+composition_by_region <- city_db %>%
+  inner_join(country_db, by = "iso3c") %>%
+  filter(!is.na(region_id.x), !is.na(food_pct.x)) %>%
+  group_by(region_id = region_id.x) %>%
+  summarise(
+    number_of_cities = n(),
+    avg_food_pct     = round(mean(food_pct.x, na.rm = TRUE), 3),
+    avg_plastic_pct  = round(mean(plastic_pct.x, na.rm = TRUE), 3),
+    avg_paper_pct    = round(mean(paper_pct.x, na.rm = TRUE), 3),
+    avg_textile_pct  = round(mean(textile_pct.x, na.rm = TRUE), 3),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(avg_food_pct)) %>%
+  collect()
+
+composition_by_region
+```
+
+### Visualization
+
+```{r}
+#| fig-width: 10
+#| fig-height: 5
+
+# Map short region codes to full readable names
+# \n breaks the label into two lines so they fit on the x-axis
+region_labels <- c(
+  "E. Asia & Pacific"        = "East Asia &\nPacific",
+  "Eur. & Cent. Asia"        = "Europe &\nCentral Asia",
+  "L. Amer. & the Caribbean" = "Latin America &\nthe Caribbean",
+  "Mid. East & N. Africa"    = "Middle East &\nNorth Africa",
+  "N. Amer."                 = "North\nAmerica",
+  "S. Asia"                  = "South\nAsia",
+  "Sub-Saharan Africa"       = "Sub-Saharan\nAfrica"
+)
+
+# Put all four waste types into one column for plotting
+region_long <- composition_by_region %>%
+  mutate(region_id = recode(region_id, !!!region_labels)) %>%
+  pivot_longer(
+    cols      = c(avg_food_pct, avg_plastic_pct, avg_paper_pct, avg_textile_pct),
+    names_to  = "waste_type",
+    values_to = "avg_pct"
+  ) %>%
+  mutate(
+    waste_type = recode(waste_type,
+                        "avg_food_pct"    = "Food & Organic",
+                        "avg_plastic_pct" = "Plastic",
+                        "avg_paper_pct"   = "Paper & Cardboard",
+                        "avg_textile_pct" = "Textile"),
+    # Order regions from highest to lowest food waste
+    region_id  = fct_reorder(region_id, avg_pct, .fun = max, .desc = TRUE)
+  )
+
+ggplot(region_long,
+       aes(x = region_id, y = avg_pct, fill = waste_type)) +
+  geom_col(position = "dodge") +
+  labs(
+    title    = "Average Waste Composition by World Region",
+    subtitle = "South Asia has the highest food waste.",
+    x        = "Regions",
+    y        = "Average % of total waste",
+    fill     = "Waste type",
+  ) +
+  scale_fill_manual(values = c(
+    "Food & Organic"    = "#D95C75",   # raspberry
+    "Plastic"           = "#DFA8B0",   # pink grapefruit
+    "Paper & Cardboard" = "#F4C060",   # lemon
+    "Textile"           = "#C0C060"    # lime
+  )) +
+  theme_minimal() +
+  theme(
+    plot.title    = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(size = 10, color = "gray40"),
+    axis.text.x   = element_text(lineheight = 0.85)
+  )
+
+# Save plot to image folder for use in presentation
+ggsave(here("image", "plot2_composition_region.png"),
+       width = 10, height = 5, dpi = 300)
+```
+
+**Key finding:** Sub-Saharan Africa and South Asia have the highest food waste shares,
+matching their lower income levels. North America and Europe show more paper and
+plastic, reflecting higher consumption of packaged goods.
+
+---
+
+## Analysis 3: Does waste composition predict treatment rates?
+
+*Answers: Does a country's waste composition predict its recycling or open dumping rates?*
+
+This corresponds to Query in `waste_data_analysis.sql`. I join city-level food waste percentages with country-level treatment rates, grouped by income group. Sanitary landfill is included alongside open dumping and recycling because it
+completes the picturewhen open dumping falls, waste has to go somewhere, and
+sanitary landfill is where it goes in higher-income countries.
+
+### Query
+
+```{r}
+# Join city-level composition with country-level treatment rates
+# grouped by income group to see whether higher food waste countries
+# also rely more on open dumping and less on recycling and sanitary landfill
+
+composition_vs_treatment <- city_db %>%
+  inner_join(country_db, by = "iso3c", suffix = c("_city", "_country")) %>%
+  filter(
+    !is.na(income_id_city),
+    !is.na(food_pct_city),
+    !is.na(open_dump_pct_country)
+  ) %>%
+  group_by(income_id_city, income_label_city) %>%
+  summarise(
+    avg_food_pct              = round(mean(food_pct_city, na.rm = TRUE), 3),
+    avg_open_dump_pct         = round(mean(open_dump_pct_country, na.rm = TRUE), 3),
+    avg_recycling_pct         = round(mean(recycling_pct_country, na.rm = TRUE), 3),
+    avg_sanitary_landfill_pct = round(mean(sanitary_landfill_pct_country, na.rm = TRUE), 3),
+    number_of_cities          = n(),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(avg_open_dump_pct)) %>%
+  collect()
+
+composition_vs_treatment
+```
+
+### Visualization
+
+```{r}
+#| fig-width: 9
+#| fig-height: 5
+
+# Order income groups from lowest to highest for a clear trend direction
+composition_vs_treatment <- composition_vs_treatment %>%
+  mutate(income_label_city = factor(income_label_city,
+                                    levels = c("Low Income", "Lower-Middle Income",
+                                               "Upper-Middle Income", "High Income")))
+
+# Stack food waste and all three treatment types into one column
+treatment_long <- composition_vs_treatment %>%
+  pivot_longer(
+    cols      = c(avg_food_pct, avg_open_dump_pct,
+                  avg_recycling_pct, avg_sanitary_landfill_pct),
+    names_to  = "measure",
+    values_to = "avg_pct"
+  ) %>%
+  mutate(measure = recode(measure,
+                          "avg_food_pct"              = "Food Waste % (city)",
+                          "avg_open_dump_pct"         = "Open Dumping %",
+                          "avg_recycling_pct"         = "Recycling %",
+                          "avg_sanitary_landfill_pct" = "Sanitary Landfill %"))
+
+ggplot(treatment_long,
+       aes(x = income_label_city, y = measure, fill = avg_pct)) +
+  geom_tile(color = "white", linewidth = 0.8) +
+  geom_text(aes(label = paste0(round(avg_pct * 100, 1), "%")),
+            size = 3.5, color = "gray20") +
+  labs(
+    title    = "Food Waste vs. Treatment Rates by Income Group",
+    subtitle = "Darker cells = higher percentage; pattern shows how income shapes waste management",
+    x        = "Income group",
+    y        = NULL,
+    fill     = "Average %",
+  ) +
+  scale_fill_gradient(
+    low  = "#BFB74B",   
+    high = "#D96C80",   
+    labels = scales::percent
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title    = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(size = 10, color = "gray40"),
+    axis.text.x   = element_text(angle = 15, hjust = 1),
+    axis.text.y   = element_text(size = 10),
+    legend.position = "right"
+  )
+
+# Save plot to image folder for use in presentation
+ggsave(here("image", "plot3_heatmap_treatment.png"),
+       width = 9, height = 5, dpi = 300)
+```
+
+**Key finding:** Countries with the most food waste (low-income) also rely most on open dumping and least on recycling and sanitary landfill. As income rises and food waste falls, open dumping drops and more managed treatment methods take over.
+
+------------------------------------------------------------------------
+
+## Analysis 4: Country-Level Scatter: Does Food Waste Predict Treatment Rates?
+
+*Answers: Does a country's waste composition predict its recycling or open dumping rates?*
+
+This corresponds to Query in `waste_data_analysis.sql`, but drills down further. While Analysis 3 shows
+grouped averages, this scatter plot zooms in to individual countries and adds a regression line to show whether the relationship between food waste and treatmentis statistically meaningful. Each dot is one country.
+
+### Query
+
+```{r}
+# Calculate average food waste % per country from city-level data
+# then join with country-level recycling and open dumping rate
+
+country_scatter <- city_db %>%
+  filter(!is.na(food_pct), !is.na(iso3c)) %>%
+  group_by(iso3c) %>%
+  summarise(
+    avg_food_pct = round(mean(food_pct, na.rm = TRUE), 3),
+    .groups = "drop"
+  ) %>%
+  inner_join(
+    # Pull treatment rates and income label from country_data
+    country_db %>% select(iso3c, recycling_pct, open_dump_pct, income_label),
+    by = "iso3c"
+  ) %>%
+  filter(!is.na(recycling_pct), !is.na(open_dump_pct)) %>%
+  collect()
+
+country_scatter
+```
+
+### Correlations
+
+```{r}
+# Calculate correlation between food waste % and each treatment outcome
+# r close to -1 means strong negative relationship (more food waste = less recycling)
+# r close to +1 means strong positive relationship (more food waste = more dumping)
+
+cor_recycling <- cor(country_scatter$avg_food_pct, country_scatter$recycling_pct,
+                     use = "complete.obs")
+cor_dumping   <- cor(country_scatter$avg_food_pct, country_scatter$open_dump_pct,
+                     use = "complete.obs")
+
+cat(sprintf("Food waste %% vs recycling %%:    r = %.2f\n", cor_recycling))
+cat(sprintf("Food waste %% vs open dumping %%: r = %.2f\n", cor_dumping))
+```
+
+### Visualization
+
+```{r}
+#| fig-width: 10
+#| fig-height: 5
+
+# Put recycling and open dumping into one column for a faceted scatter plot
+# Each facet shows the relationship between food waste and one treatment outcome
+scatter_long <- country_scatter %>%
+  pivot_longer(
+    cols      = c(recycling_pct, open_dump_pct),
+    names_to  = "outcome",
+    values_to = "pct"
+  ) %>%
+  mutate(
+    outcome = recode(outcome,
+                     "recycling_pct"  = "Recycling %",
+                     "open_dump_pct"  = "Open Dumping %"),
+    income_label = factor(income_label,
+                          levels = c("Low Income", "Lower-Middle Income",
+                                     "Upper-Middle Income", "High Income"))
+  )
+
+ggplot(scatter_long,
+       aes(x = avg_food_pct, y = pct)) +
+  geom_point(aes(color = income_label), size = 2.5) +
+  geom_smooth(method = "lm", se = TRUE, color = "coral4", linewidth = 0.6) +
+  facet_wrap(~ outcome, scales = "free_y") +
+  labs(
+    title    = "Country Level Analysis: Does Food Waste % Predict Treatment Rates?",
+    subtitle = "Each point is one country. The regression line shows the overall trend.",
+    x        = "Average food waste % (city-level average per country)",
+    y        = "Treatment rate (%)",
+    color    = "Income group"
+  ) +
+  scale_color_manual(values = c(
+    "Low Income"          = "#BF2A52",   # deep raspberry
+    "Lower-Middle Income" = "#D96C80",   # soft pink
+    "Upper-Middle Income" = "#BFB74B",   # citrus green
+    "High Income"         = "#F2AE2E"    # golden yellow
+  )) +
+  theme_minimal() +
+  theme(
+    plot.title    = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(size = 10, color = "gray40"),
+    strip.text    = element_text(face = "bold")
+  )
+
+# Save plot to image folder for use in presentation
+ggsave(here("image", "plot4_scatter_prediction.png"),
+       width = 10, height = 5, dpi = 300)
+```
+
+**Key finding:** Countries with more food waste tend to have higher open dumping rates and lower recycling rates. The correlation values and regression lines confirm the direction and strength of this relationship at the individual country level.
+
+------------------------------------------------------------------------
+
+## Summary
+
+These four analyses together fully answer the research question:
+
+**Part 1: Waste composition differs significantly by income group and region.**
+Low-income countries and regions like Sub-Saharan Africa and South Asia throw away mostly food, often over 50% of their waste. Higher-income countries have less food waste and more paper, plastic, and textile, reflecting different consumption patterns.
+
+**Part 2: Waste composition does predict treatment rates.**
+Analyses 3 and 4 both show that countries with more food waste tend to use open dumping more and recycle less. Analysis 3 shows this at the income group level, Analysis 4 confirms it at the individual country level with correlation values and
+regression lines.
+
+------------------------------------------------------------------------
+
+## Step 4: Close the database connection
+
+```{r}
+# Always close the connection when done
+# shutdown = TRUE cleanly closes the DuckDB engine
+DBI::dbDisconnect(conn, shutdown = TRUE)
+
+cat("Database connection closed\n")
+```
+
+------------------------------------------------------------------------
+
+## Session info
+
+The output below records the R version and package versions used to produce this file. This makes the analysis reproducible on other machines.
+
+```{r}
+sessionInfo()
+```
